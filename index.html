@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ORDERIT – Food Delivery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600;9..144,800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="brand-mark">🍅</span><span class="brand-name">ORDERIT</span></div>
+      <nav class="roles" id="roles" aria-label="Switch role">
+        <button data-act="role" data-role="customer">Customer</button>
+        <button data-act="role" data-role="manager">Delivery Manager</button>
+        <button data-act="role" data-role="rider">Rider</button>
+      </nav>
+      <div class="userchip" id="userchip"></div>
+    </div>
+  </header>
+
+  <main id="view" class="container"></main>
+
+  <div id="modal" class="modal-root" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <footer class="footer">
+    Demo app &middot; data is stored in your browser (localStorage). Open Customer, Manager and Rider in separate tabs to watch an order move through the whole workflow.
+    <button class="link" data-act="reset">Reset demo data</button>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
