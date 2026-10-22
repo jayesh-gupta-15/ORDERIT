@@ -61,7 +61,7 @@
 
     /* ---------- state ---------- */
     // S survives reloads (per tab). D is the data fetched from the server.
-    let S = { role: 'customer', tokens: {}, users: {}, riderId: null, tab: 'menu', cat: 0, addingAddr: false, payOpen: false };
+    let S = { role: 'customer', authMode: 'login', tokens: {}, users: {}, riderId: null, tab: 'menu', cat: 0, addingAddr: false, payOpen: false };
     try {
         Object.assign(S, JSON.parse(sessionStorage.getItem(SESSION_KEY)) || {});
     }
@@ -182,18 +182,25 @@
 
     /* ----- login screens ----- */
     function loginView() {
+        const reg = S.authMode === 'register';
         return `
       <div class="login-wrap card">
         <div class="hero-emoji">🍛</div>
-        <h1>Hungry? Log in.</h1>
-        <p class="muted">Enter your details to see the menu. If your email is already registered, use the phone number on your account to log in.</p>
-        <form data-form="login">
-          <div class="field"><label for="l-name">Name</label><input id="l-name" name="name" autocomplete="name" placeholder="Only needed for new accounts" /></div>
+        <h1>${reg ? 'Hungry? Join us.' : 'Hungry? Log in.'}</h1>
+        <div class="subnav">
+          <button class="${reg ? '' : 'active'}" data-act="authMode" data-mode="login">Login</button>
+          <button class="${reg ? 'active' : ''}" data-act="authMode" data-mode="register">Register</button>
+        </div>
+        <p class="muted">${reg
+            ? 'Create your account to start ordering. Your details are saved to our database.'
+            : 'Welcome back! Log in with the email and phone number on your account.'}</p>
+        <form data-form="${reg ? 'register' : 'login'}">
+          ${reg ? '<div class="field"><label for="l-name">Name</label><input id="l-name" name="name" required autocomplete="name" /></div>' : ''}
           <div class="row2">
             <div class="field"><label for="l-phone">Phone</label><input id="l-phone" name="phone" required inputmode="tel" pattern="[0-9+ ]{10,15}" title="10 to 15 digits" /></div>
             <div class="field"><label for="l-email">Email</label><input id="l-email" name="email" type="email" required autocomplete="email" /></div>
           </div>
-          <button class="btn btn-primary btn-lg" type="submit">Login &amp; see menu</button>
+          <button class="btn btn-primary btn-lg" type="submit">${reg ? 'Register &amp; see menu' : 'Login &amp; see menu'}</button>
         </form>
       </div>`;
     }
@@ -451,6 +458,7 @@
         role(el) { S.role = el.dataset.role; D = emptyData(); S.payOpen = false; },
         retry() { /* refresh happens after every action */ },
         logout() { delete S.tokens[S.role]; delete S.users[S.role]; S.tab = 'menu'; S.payOpen = false; D = emptyData(); },
+        authMode(el) { S.authMode = el.dataset.mode; },
         tab(el) { S.tab = el.dataset.tab; },
         cat(el) { S.cat = Number(el.dataset.cat); },
         toggleAddr() { S.addingAddr = !S.addingAddr; },
@@ -517,13 +525,20 @@
         async login(f) {
             const d = new FormData(f);
             const body = { email: String(d.get('email')).trim(), phone: String(d.get('phone')).trim() };
-            const name = String(d.get('name')).trim();
-            if (name) body.name = name;
             const res = await api('POST', '/auth/login', body);
             S.tokens.customer = res.token;
             S.users.customer = res.user;
             S.tab = 'menu';
-            toast(`Welcome, ${res.user.name.split(' ')[0]}!`);
+            toast(`Welcome back, ${res.user.name.split(' ')[0]}!`);
+        },
+        async register(f) {
+            const d = new FormData(f);
+            const body = { name: String(d.get('name')).trim(), email: String(d.get('email')).trim(), phone: String(d.get('phone')).trim() };
+            const res = await api('POST', '/auth/register', body);
+            S.tokens.customer = res.token;
+            S.users.customer = res.user;
+            S.tab = 'menu';
+            toast(`Account created. Welcome, ${res.user.name.split(' ')[0]}!`);
         },
         async staff(f) {
             const role = f.dataset.role;

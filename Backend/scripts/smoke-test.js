@@ -59,11 +59,13 @@ async function main() {
 
     await step('protected routes reject anonymous users', async () => expectStatus(await call('GET', '/orders'), 401));
 
-    await step('sign-up needs a name, then creates the account', async () => {
-      expectStatus(await call('POST', '/auth/login', { body: { email, phone } }), 400);
-      const r = await call('POST', '/auth/login', { body: { email, phone, name: 'Test Customer' } });
-      expectStatus(r, 200);
+    await step('login rejects unknown emails; register needs a name, then creates the account', async () => {
+      expectStatus(await call('POST', '/auth/login', { body: { email, phone } }), 401);
+      expectStatus(await call('POST', '/auth/register', { body: { email, phone } }), 400);
+      const r = await call('POST', '/auth/register', { body: { email, phone, name: 'Test Customer' } });
+      expectStatus(r, 201);
       cust = r.body.token;
+      expectStatus(await call('POST', '/auth/register', { body: { email, phone: '+919000000001', name: 'Dup' } }), 409);
     });
 
     await step('login checks the phone on file', async () => {
@@ -221,7 +223,7 @@ async function main() {
       // Drain item 24 down to 1 unit, then two customers race for it.
       await pool.query('UPDATE food_items SET stock_quantity = 1 WHERE food_item_id = 24');
       const mk = async n => {
-        const l = await call('POST', '/auth/login', { body: { email: `racer${stamp}${n}@example.com`, phone: '+91' + String(stamp + n).slice(-10), name: 'Racer ' + n } });
+        const l = await call('POST', '/auth/register', { body: { email: `racer${stamp}${n}@example.com`, phone: '+91' + String(stamp + n).slice(-10), name: 'Racer ' + n } });
         const t = l.body.token;
         await call('POST', '/me/addresses', { token: t, body: { flatNumber: '1', buildingName: 'Race', landmark: 'Track', pincode: '400601' } });
         const o = (await call('POST', '/orders', { token: t })).body.order;

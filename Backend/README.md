@@ -30,7 +30,7 @@ Open **http://localhost:3000**. Use separate browser tabs for Customer, Delivery
 
 | Role | How |
 |---|---|
-| Customer | Email + phone (+ name for a new account). Sample user: `aarav.sharma@example.com` / `+919876543210` |
+| Customer | **Register** tab (name, email, phone) creates the account in the database; **Login** tab takes email + phone. Sample user: `aarav.sharma@example.com` / `+919876543210` |
 | Delivery Manager | Passcode `MANAGER_PASSCODE` from `.env` (default `manager123`) |
 | Rider | Pick your name, passcode `RIDER_PASSCODE` (default `rider123`) |
 
@@ -61,7 +61,7 @@ The schema has no password columns, so customers prove identity with email + pho
 
 ## API summary (all under `/api`, JSON, `Authorization: Bearer <token>`)
 
-- Auth: `POST /auth/login`, `POST /auth/staff`, `GET /auth/me`, `GET /auth/riders`, `GET /auth/managers`
+- Auth: `POST /auth/register`, `POST /auth/login`, `POST /auth/staff`, `GET /auth/me`, `GET /auth/riders`, `GET /auth/managers`
 - Menu (public): `GET /menu?categoryId=&q=&inStock=`, `GET /menu/categories`
 - Customer: `GET|POST /me/addresses`, `DELETE /me/addresses/:id`
 - Orders (customer): `GET /orders`, `GET /orders/active`, `POST /orders`, `GET /orders/:id`, `POST /orders/:id/items`, `PATCH|DELETE /orders/:id/items/:foodItemId`, `PATCH /orders/:id/address`, `POST /orders/:id/checkout`, `POST /orders/:id/checkout/cancel`, `POST /orders/:id/pay {paymentMethod}`, `DELETE /orders/:id`

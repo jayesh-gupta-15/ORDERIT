@@ -17,23 +17,15 @@ const safeEqual = (a, b) => {
 
 const publicUser = u => ({ userId: u.user_id, name: u.full_name, phone: u.phone_number, email: u.email });
 
-/**
- * Customer login / sign-up.
- * - New email  -> account is created (name + phone required).
- * - Known email -> phone number must match the one on file (the schema has no passwords).
- */
-router.post('/login', asyncHandler(async (req, res) => {
-  const body = parse(z.object({ email, phone, name: name.optional() }), req.body);
+/** Customer registration: creates the account in the users table. */
+router.post('/register', asyncHandler(async (req, res) => {
+  const body = parse(z.object({ email, phone, name }), req.body);
 
   const user = await withTransaction(async conn => {
-    const [rows] = await conn.query('SELECT * FROM users WHERE email = ? FOR UPDATE', [body.email]);
-    if (rows.length) {
-      if (normalizePhone(rows[0].phone_number) !== body.phone) throw unauthorized('Email and phone do not match our records');
-      return rows[0];
-    }
-    if (!body.name) throw badRequest('name: Name is required to create a new account');
-    const [dup] = await conn.query('SELECT user_id FROM users WHERE phone_number = ?', [body.phone]);
-    if (dup.length) throw conflict('That phone number is already registered with a different email');
+    const [byEmail] = await conn.query('SELECT user_id FROM users WHERE email = ? FOR UPDATE', [body.email]);
+    if (byEmail.length) throw conflict('That email is already registered. Please log in instead');
+    const [byPhone] = await conn.query('SELECT user_id FROM users WHERE phone_number = ?', [body.phone]);
+    if (byPhone.length) throw conflict('That phone number is already registered. Please log in instead');
     const [ins] = await conn.query(
       'INSERT INTO users (full_name, phone_number, email) VALUES (?, ?, ?)',
       [body.name, body.phone, body.email]
@@ -42,7 +34,22 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 
   const token = sign({ role: 'customer', sub: user.user_id });
-  res.json({ token, role: 'customer', user: publicUser(user) });
+  res.status(201).json({ token, role: 'customer', user: publicUser(user) });
+}));
+
+/**
+ * Customer login for an existing account. The phone number on file must match the email
+ * (the schema has no passwords). Unknown emails must register first.
+ */
+router.post('/login', asyncHandler(async (req, res) => {
+  const body = parse(z.object({ email, phone }), req.body);
+
+  const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [body.email]);
+  if (!rows.length) throw unauthorized('No account found for that email. Please register first');
+  if (normalizePhone(rows[0].phone_number) !== body.phone) throw unauthorized('Email and phone do not match our records');
+
+  const token = sign({ role: 'customer', sub: rows[0].user_id });
+  res.json({ token, role: 'customer', user: publicUser(rows[0]) });
 }));
 
 /** Rider names for the rider app's "I am" picker (no contact details exposed). */
