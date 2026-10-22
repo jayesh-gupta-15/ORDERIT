@@ -61,7 +61,7 @@
 
     /* ---------- state ---------- */
     // S survives reloads (per tab). D is the data fetched from the server.
-    let S = { role: 'customer', authMode: 'login', tokens: {}, users: {}, riderId: null, tab: 'menu', cat: 0, addingAddr: false, payOpen: false };
+    let S = { role: 'customer', authMode: 'login', tokens: {}, users: {}, riderId: null, tab: 'menu', cat: 0, f: { q: '', cuisine: '', min: '', max: '', two: '', sort: '', inStock: false }, addingAddr: false, payOpen: false };
     try {
         Object.assign(S, JSON.parse(sessionStorage.getItem(SESSION_KEY)) || {});
     }
@@ -171,6 +171,7 @@
             view.innerHTML = S.tokens.manager ? managerView() : staffLoginView('manager');
         else
             view.innerHTML = riderView();
+        renderMenuGrid();
         renderModal();
     }
 
@@ -227,9 +228,7 @@
     </div>`;
         if (S.tab === 'orders')
             return tabs + myOrders();
-        const items = D.menu.items.filter(f => !S.cat || f.categoryId === S.cat);
         const o = D.active;
-        const locked = !o || o.status !== ST.PROGRESS;
         return `
       <div class="layout">
         <section>
@@ -239,23 +238,90 @@
             <button class="chip ${!S.cat ? 'active' : ''}" data-act="cat" data-cat="0">All</button>
             ${D.menu.categories.map(c => `<button class="chip ${S.cat === c.categoryId ? 'active' : ''}" data-act="cat" data-cat="${c.categoryId}">${esc(c.name)}</button>`).join('')}
           </div>
-          <div class="menu-grid">
-            ${items.map(f => `
+          ${filterBar()}
+          <div class="muted small" id="menu-count" style="margin-bottom:10px"></div>
+          <div class="menu-grid" id="menu-grid"></div>
+        </section>
+        ${orderPanel(o)}
+      </div>`;
+    }
+
+    /* ----- menu filters (applied in the browser to the menu already fetched) ----- */
+    const CUISINES = ['North Indian', 'South Indian', 'Chinese & Pan-Asian', 'Italian', 'Fast Food'];
+    // The database has no cuisine column, so derive it from the category name.
+    const cuisineOf = f => {
+        const c = f.categoryName;
+        if (/North Indian|Starters|Breads/.test(c)) return 'North Indian';
+        if (/South Indian/.test(c)) return 'South Indian';
+        if (/Chinese/.test(c)) return 'Chinese & Pan-Asian';
+        if (/Italian|Pizza/.test(c)) return 'Italian';
+        if (/Burger/.test(c)) return 'Fast Food';
+        return '';
+    };
+    const TWO_RANGES = { '1': [0, 300], '2': [300, 500], '3': [500, 700], '4': [700, Infinity] };
+    const TWO_LABELS = { '1': 'Under ₹300', '2': '₹300 – ₹500', '3': '₹500 – ₹700', '4': 'Above ₹700' };
+    const forTwo = f => f.priceInclGst * 2;
+
+    function filteredItems() {
+        const F = S.f;
+        const q = F.q.trim().toLowerCase();
+        const min = F.min === '' ? 0 : Number(F.min);
+        const max = F.max === '' ? Infinity : Number(F.max);
+        const two = TWO_RANGES[F.two];
+        const items = D.menu.items.filter(f =>
+            (!S.cat || f.categoryId === S.cat)
+            && (!q || f.name.toLowerCase().includes(q))
+            && (!F.cuisine || cuisineOf(f) === F.cuisine)
+            && f.unitPrice >= min && f.unitPrice <= max
+            && (!two || (forTwo(f) >= two[0] && forTwo(f) < two[1]))
+            && (!F.inStock || f.inStock));
+        if (F.sort === 'low') items.sort((a, b) => a.unitPrice - b.unitPrice);
+        else if (F.sort === 'high') items.sort((a, b) => b.unitPrice - a.unitPrice);
+        else if (F.sort === 'name') items.sort((a, b) => a.name.localeCompare(b.name));
+        return items;
+    }
+
+    function filterBar() {
+        const F = S.f;
+        const sel = (key, opts) => opts.map(([v, label]) => `<option value="${esc(v)}" ${F[key] === v ? 'selected' : ''}>${esc(label)}</option>`).join('');
+        return `<div class="filters card">
+      <div class="field"><label for="f-q">Search by name</label><input id="f-q" data-filter="q" type="search" placeholder="e.g. paneer" value="${esc(F.q)}" /></div>
+      <div class="field"><label for="f-cuisine">Cuisine</label><select id="f-cuisine" data-filter="cuisine">${sel('cuisine', [['', 'All cuisines'], ...CUISINES.map(c => [c, c])])}</select></div>
+      <div class="field"><label for="f-min">Price (₹)</label><div class="row2"><input id="f-min" data-filter="min" type="number" min="0" inputmode="numeric" placeholder="Min" value="${esc(F.min)}" aria-label="Minimum price" /><input data-filter="max" type="number" min="0" inputmode="numeric" placeholder="Max" value="${esc(F.max)}" aria-label="Maximum price" /></div></div>
+      <div class="field"><label for="f-two">Cost for two</label><select id="f-two" data-filter="two">${sel('two', [['', 'Any'], ...Object.entries(TWO_LABELS)])}</select></div>
+      <div class="field"><label for="f-sort">Sort by</label><select id="f-sort" data-filter="sort">${sel('sort', [['', 'Recommended'], ['low', 'Price: low to high'], ['high', 'Price: high to low'], ['name', 'Name: A to Z']])}</select></div>
+      <div class="field filter-end"><label class="check"><input data-filter="inStock" type="checkbox" ${F.inStock ? 'checked' : ''} /> In stock only</label>
+        <button class="link" data-act="clearFilters" type="button">Clear filters</button></div>
+    </div>`;
+    }
+
+    function foodCard(f, o, locked) {
+        return `
               <article class="food">
                 <div class="food-art" style="background:${ART_BG[f.foodItemId % ART_BG.length]}">${emojiFor(f.name)}</div>
                 <div class="food-body">
                   <div class="food-name">${esc(f.name)}</div>
-                  <div class="food-meta">${esc(f.categoryName)} · GST ${f.gstRate}%${f.inStock && f.stockQuantity <= 5 ? ` · only ${f.stockQuantity} left` : ''}</div>
+                  <div class="food-meta">${esc(cuisineOf(f) || f.categoryName)} · GST ${f.gstRate}%${f.inStock && f.stockQuantity <= 5 ? ` · only ${f.stockQuantity} left` : ''}</div>
+                  <div class="food-meta">${money(forTwo(f))} for two (incl. GST)</div>
                   <div class="food-foot">
                     <span class="price">${money(f.unitPrice)}</span>
                     <button class="btn btn-sm btn-primary" data-act="add" data-food="${f.foodItemId}" ${!f.inStock || (o && locked) ? 'disabled' : ''}>${f.inStock ? 'ADD TO CART' : 'SOLD OUT'}</button>
                   </div>
                 </div>
-              </article>`).join('')}
-          </div>
-        </section>
-        ${orderPanel(o)}
-      </div>`;
+              </article>`;
+    }
+
+    // Re-draws only the dish grid, so typing in the filter boxes keeps focus.
+    function renderMenuGrid() {
+        const grid = $('#menu-grid');
+        if (!grid || !D.menu) return;
+        const o = D.active;
+        const locked = !o || o.status !== ST.PROGRESS;
+        const items = filteredItems();
+        grid.innerHTML = items.length
+            ? items.map(f => foodCard(f, o, locked)).join('')
+            : '<div class="card empty" style="grid-column:1/-1">No dishes match these filters.<br><button class="link" data-act="clearFilters">Clear filters</button></div>';
+        $('#menu-count').textContent = `${items.length} of ${D.menu.items.length} dishes`;
     }
 
     function orderPanel(o) {
@@ -458,6 +524,7 @@
         role(el) { S.role = el.dataset.role; D = emptyData(); S.payOpen = false; },
         retry() { /* refresh happens after every action */ },
         logout() { delete S.tokens[S.role]; delete S.users[S.role]; S.tab = 'menu'; S.payOpen = false; D = emptyData(); },
+        clearFilters() { S.f = { q: '', cuisine: '', min: '', max: '', two: '', sort: '', inStock: false }; },
         authMode(el) { S.authMode = el.dataset.mode; },
         tab(el) { S.tab = el.dataset.tab; },
         cat(el) { S.cat = Number(el.dataset.cat); },
@@ -594,6 +661,14 @@
             return;
         e.preventDefault();
         run(() => forms[f.dataset.form]?.(f));
+    });
+    document.addEventListener('input', e => {
+        const el = e.target.closest('[data-filter]');
+        if (!el)
+            return;
+        S.f[el.dataset.filter] = el.type === 'checkbox' ? el.checked : el.value;
+        saveSession();
+        renderMenuGrid();
     });
     document.addEventListener('change', e => {
         const el = e.target.closest('[data-change]');

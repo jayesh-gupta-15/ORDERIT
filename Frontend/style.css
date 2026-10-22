@@ -83,6 +83,11 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .chip { border: 1.5px solid var(--line); background: #fff; padding: 6px 14px; border-radius: 999px; font: inherit; font-size: .9rem; cursor: pointer; }
 .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+.filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 12px; padding: 14px 16px 6px; margin-bottom: 14px; }
+.filters .field { margin-bottom: 8px; }
+.filter-end { display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; }
+.check { display: flex; align-items: center; gap: 6px; font-weight: 500; margin: 0; }
+.check input { width: auto; }
 .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
 .food { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow); }
 .food-art { height: 104px; display: grid; place-items: center; font-size: 3.4rem; }
