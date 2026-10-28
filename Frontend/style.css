@@ -166,3 +166,5 @@ th { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color:
   .assign-row { grid-template-columns: 1fr 1fr; }
   .assign-row .btn { grid-column: 1 / -1; }
 }
+.login-roles { width: fit-content; margin: 30px auto 0; }
+.login-roles + .login-wrap { margin-top: 20px; }

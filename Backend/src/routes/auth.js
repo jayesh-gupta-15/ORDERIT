@@ -52,6 +52,21 @@ router.post('/login', asyncHandler(async (req, res) => {
   res.json({ token, role: 'customer', user: publicUser(rows[0]) });
 }));
 
+/** Rider login: the email and phone number on the rider's account must match (same as customer login). */
+router.post('/rider-login', asyncHandler(async (req, res) => {
+  const body = parse(z.object({ email, phone }), req.body);
+
+  const [rows] = await pool.query('SELECT rider_id, full_name, phone_number FROM riders WHERE email = ?', [body.email]);
+  if (!rows.length) throw unauthorized('No rider account found for that email');
+  if (normalizePhone(rows[0].phone_number) !== body.phone) throw unauthorized('Email and phone do not match our records');
+
+  res.json({
+    token: sign({ role: 'rider', sub: rows[0].rider_id }),
+    role: 'rider',
+    user: { riderId: rows[0].rider_id, name: rows[0].full_name },
+  });
+}));
+
 /** Rider names for the rider app's "I am" picker (no contact details exposed). */
 router.get('/riders', asyncHandler(async (_req, res) => {
   const [rows] = await pool.query('SELECT rider_id, full_name FROM riders ORDER BY full_name');

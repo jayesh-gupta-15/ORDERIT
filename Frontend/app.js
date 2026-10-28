@@ -66,6 +66,12 @@
         Object.assign(S, JSON.parse(sessionStorage.getItem(SESSION_KEY)) || {});
     }
     catch (e) { /* ignore */ }
+    // The role can only be chosen on the login page. Once someone is signed in, the tab stays locked to that role.
+    const ROLES = [['customer', 'Customer'], ['manager', 'Delivery Manager'], ['rider', 'Rider']];
+    const signedInRole = () => ROLES.map(r => r[0]).find(r => S.tokens[r]);
+    if (!ROLES.some(r => r[0] === S.role)) S.role = 'customer';
+    if (signedInRole()) S.role = signedInRole();
+    S.cat = 0;
     const saveSession = () => { try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(S)); } catch (e) { /* storage blocked */ } };
     let D = emptyData();
     let offline = false;
@@ -125,9 +131,6 @@
             D.deliveries = deliveries.deliveries;
         }
         else {
-            D.riderChoices = (await api('GET', '/auth/riders')).riders;
-            if (!D.riderChoices.some(r => r.riderId === S.riderId)) S.riderId = D.riderChoices[0]?.riderId ?? null;
-            if (S.tokens.rider && S.users.rider?.riderId !== S.riderId) { delete S.tokens.rider; delete S.users.rider; }
             if (!S.tokens.rider) return;
             const [me, current, history] = await Promise.all([
                 api('GET', '/rider/me'), api('GET', '/rider/deliveries/current'), api('GET', '/rider/deliveries/history')
@@ -158,7 +161,6 @@
     /* ---------- rendering ---------- */
     function render() {
         saveSession();
-        document.querySelectorAll('#roles button').forEach(b => b.classList.toggle('active', b.dataset.role === S.role));
         const user = S.users[S.role];
         $('#userchip').innerHTML = S.tokens[S.role] && user
             ? `<span class="avatar">${esc((user.name || '?')[0].toUpperCase())}</span><span>${esc(user.name)}</span><button class="btn btn-sm btn-ghost" data-act="logout">Log out</button>`
@@ -166,13 +168,19 @@
         const view = $('#view');
         if (offline) view.innerHTML = offlineView();
         else if (S.role === 'customer')
-            view.innerHTML = S.tokens.customer && D.menu ? customerView(S.users.customer) : loginView();
+            view.innerHTML = S.tokens.customer && D.menu ? customerView(S.users.customer) : roleToggle() + loginView();
         else if (S.role === 'manager')
-            view.innerHTML = S.tokens.manager ? managerView() : staffLoginView('manager');
+            view.innerHTML = S.tokens.manager ? managerView() : roleToggle() + staffLoginView('manager');
         else
             view.innerHTML = riderView();
         renderMenuGrid();
         renderModal();
+    }
+
+    // Shown on the login page only: lets Customer, Delivery Manager and Rider each pick their own login.
+    function roleToggle() {
+        return `<nav class="roles login-roles" aria-label="Choose how to log in">${ROLES.map(([r, label]) =>
+            `<button class="${S.role === r ? 'active' : ''}" data-act="role" data-role="${r}">${label}</button>`).join('')}</nav>`;
     }
 
     function offlineView() {
@@ -234,10 +242,6 @@
         <section>
           ${tabs}
           <h1>Hi ${esc(u.name.split(' ')[0])}, what are you craving?</h1>
-          <div class="chips">
-            <button class="chip ${!S.cat ? 'active' : ''}" data-act="cat" data-cat="0">All</button>
-            ${D.menu.categories.map(c => `<button class="chip ${S.cat === c.categoryId ? 'active' : ''}" data-act="cat" data-cat="${c.categoryId}">${esc(c.name)}</button>`).join('')}
-          </div>
           ${filterBar()}
           <div class="muted small" id="menu-count" style="margin-bottom:10px"></div>
           <div class="menu-grid" id="menu-grid"></div>
@@ -445,22 +449,31 @@
     }
 
     /* ----- rider ----- */
-    function riderPicker() {
-        return `<div style="min-width:220px"><label for="rider-sel">I am</label>
-          <select id="rider-sel" data-change="rider">${D.riderChoices.map(r => `<option value="${r.riderId}" ${r.riderId === S.riderId ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></div>`;
+    function riderLoginView() {
+        return `
+      <div class="login-wrap card">
+        <div class="hero-emoji">🛵</div>
+        <h1>Rider log in</h1>
+        <p class="muted">Welcome back! Log in with the email and phone number on your rider account.</p>
+        <form data-form="riderLogin">
+          <div class="row2">
+            <div class="field"><label for="r-phone">Phone</label><input id="r-phone" name="phone" required inputmode="tel" pattern="[0-9+ ]{10,15}" title="10 to 15 digits" /></div>
+            <div class="field"><label for="r-email">Email</label><input id="r-email" name="email" type="email" required autocomplete="email" /></div>
+          </div>
+          <button class="btn btn-primary btn-lg" type="submit">Log in</button>
+        </form>
+      </div>`;
     }
 
     function riderView() {
         if (!S.tokens.rider) {
-            return `<div class="page-head"><div><h1>Rider app</h1><p class="muted" style="margin:0">Pick your name, then sign in.</p></div>${riderPicker()}</div>`
-                + staffLoginView('rider');
+            return roleToggle() + riderLoginView();
         }
         const me = D.me;
         if (!me) return '<div class="card empty"><p>Loading…</p></div>';
         return `
       <div class="page-head">
         <div><h1>Rider app</h1><p class="muted" style="margin:0">Assignments from the Delivery Manager show up here.</p></div>
-        ${riderPicker()}
       </div>
       <div class="two-col">
         <section>
@@ -521,7 +534,7 @@
     /* ---------- actions (each one calls the API; the page then re-fetches and re-renders) ---------- */
     const orderPath = (suffix = '') => `/orders/${D.active.orderId}${suffix}`;
     const actions = {
-        role(el) { S.role = el.dataset.role; D = emptyData(); S.payOpen = false; },
+        role(el) { if (!signedInRole()) { S.role = el.dataset.role; D = emptyData(); S.payOpen = false; } },
         retry() { /* refresh happens after every action */ },
         logout() { delete S.tokens[S.role]; delete S.users[S.role]; S.tab = 'menu'; S.payOpen = false; D = emptyData(); },
         clearFilters() { S.f = { q: '', cuisine: '', min: '', max: '', two: '', sort: '', inStock: false }; },
@@ -607,10 +620,16 @@
             S.tab = 'menu';
             toast(`Account created. Welcome, ${res.user.name.split(' ')[0]}!`);
         },
+        async riderLogin(f) {
+            const d = new FormData(f);
+            const res = await api('POST', '/auth/rider-login', { email: String(d.get('email')).trim(), phone: String(d.get('phone')).trim() });
+            S.tokens.rider = res.token;
+            S.users.rider = res.user;
+            toast(`Welcome back, ${res.user.name.split(' ')[0]}!`);
+        },
         async staff(f) {
             const role = f.dataset.role;
             const body = { role, passcode: new FormData(f).get('passcode') };
-            if (role === 'rider') body.id = S.riderId;
             const res = await api('POST', '/auth/staff', body);
             S.tokens[role] = res.token;
             S.users[role] = res.user;
@@ -676,9 +695,6 @@
             return;
         if (el.dataset.change === 'address') {
             run(() => api('PATCH', orderPath('/address'), { addressId: Number(el.value) }));
-        }
-        else if (el.dataset.change === 'rider') {
-            run(() => { S.riderId = Number(el.value); });
         }
     });
 
